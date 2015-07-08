@@ -37,7 +37,7 @@ updatedeps:
 		| xargs go list -f '{{join .Deps "\n"}}' \
 		| grep -v github.com/mitchellh/packer \
 		| sort -u \
-		| xargs go get -f -u -v
+		| xargs go get -v
 
 vet:
 	@go tool vet 2>/dev/null ; if [ $$? -eq 3 ]; then \

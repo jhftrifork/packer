@@ -23,6 +23,11 @@ type DecodeOpts struct {
 	Interpolate        bool
 	InterpolateContext *interpolate.Context
 	InterpolateFilter  *interpolate.RenderFilter
+
+	// `Decode(_, c, r)` will return an error if
+	// `c.AllowUnusedKeys` and the raw `r` has a key which is not
+	// described by the config `c`.
+	AllowUnusedKeys bool
 }
 
 // Decode decodes the configuration into the target and optionally
@@ -86,8 +91,7 @@ func Decode(target interface{}, config *DecodeOpts, raws ...interface{}) error {
 		*config.Metadata = md
 	}
 
-	// If we have unused keys, it is an error
-	if len(md.Unused) > 0 {
+	if len(md.Unused) > 0 && !config.AllowUnusedKeys {
 		var err error
 		sort.Strings(md.Unused)
 		for _, unused := range md.Unused {
