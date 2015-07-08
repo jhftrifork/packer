@@ -82,7 +82,7 @@ can be configured for this builder.
   to add to this instance.
 
 * `region` (string) - The name of the region, such as "DFW", in which
-  to launch the server to create the AMI.
+  to launch the server to create the image.
   If not specified, Packer will use the environment variable
   `OS_REGION_NAME`, if set.
 
