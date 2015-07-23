@@ -13,13 +13,41 @@ import (
 	imageservice "github.com/rackspace/gophercloud/openstack/imageservice/v2"
 )
 
-type Config struct {
-	IdentityEndpoint string `mapstructure:"identity_endpoint"`
-	Username string `mapstructure:"username"`
-	Password string `mapstructure:"password"`
-	TenantId string `mapstructure:"tenant_id"`
+type ImageCreateConfig struct {
+	Name *string `mapstructure:"name"`
+	Id *string `mapstructure:"id"`
+	Visibility *imageservice.ImageVisibility `mapstructure:"visibility"`
+	Tags []string `mapstructure:"tags"`
+	ContainerFormat *string `mapstructure:"container_format"`
+	DiskFormat *string `mapstructure:"disk_format"`
+	MinDiskGigabytes *int `mapstructure:"min_disk_gigabytes"`
+	MinRamMegabytes *int `mapstructure:"min_ram_megabytes"`
+	Protected *bool `mapstructure:"protected"`
+	Properties map[string]string `mapstructure:"properties"`
+}
 
-	ImageCreateOpts imageservice.CreateOpts `mapstructure:"image"`
+func toImageServiceCreateOpts(c ImageCreateConfig) imageservice.CreateOpts {
+	return imageservice.CreateOpts{
+		Name: c.Name,
+		Id: c.Id,
+		Visibility: c.Visibility,
+		Tags: c.Tags,
+		ContainerFormat: c.ContainerFormat,
+		DiskFormat: c.DiskFormat,
+		MinDiskGigabytes: c.MinDiskGigabytes,
+		MinRamMegabytes: c.MinRamMegabytes,
+		Protected: c.Protected,
+		Properties: c.Properties,
+	}
+}
+
+type Config struct {
+	IdentityEndpoint *string `mapstructure:"identity_endpoint"`
+	Username *string `mapstructure:"username"`
+	Password *string `mapstructure:"password"`
+	TenantId *string `mapstructure:"tenant_id"`
+
+	ImageCreateConfig *ImageCreateConfig `mapstructure:"image"`
 	
 	ctx interpolate.Context // wtf is this?
 }
@@ -27,7 +55,8 @@ type Config struct {
 // implements packer.PostProcessor
 type OpenStackPostProcessor struct {
 	config Config
-	authOptions gophercloud.AuthOptions  // constructed from details in `config`
+	authOptions gophercloud.AuthOptions      // constructed from details in `config`
+	imageCreateOpts imageservice.CreateOpts  // constructed from details in `config`
 }
 
 // Configure is responsible for setting up configuration, storing the
@@ -47,44 +76,45 @@ func (p *OpenStackPostProcessor) Configure(raws ...interface{}) error {
 		return err
 	}
 
-	required := map[string]*string {
-		"identity_endpoint": &p.config.IdentityEndpoint,
-		"username": &p.config.Username,
-		"password": &p.config.Password,
-		"tenant_id": &p.config.TenantId,
+	var errs *packer.MultiError
+	if p.config.IdentityEndpoint == nil {
+		errs = packer.MultiErrorAppend(errs, fmt.Errorf("%s must be set", "identity_endpoint"))
 	}
-
-	errs := checkAllStringsNotEmpty(required)
+	
+	if p.config.Username == nil {
+		errs = packer.MultiErrorAppend(errs, fmt.Errorf("%s must be set", "username"))
+	}
+	
+	if p.config.Password == nil {
+		errs = packer.MultiErrorAppend(errs, fmt.Errorf("%s must be set", "password"))
+	}
+	
+	if p.config.TenantId == nil {
+		errs = packer.MultiErrorAppend(errs, fmt.Errorf("%s must be set", "tenant_id"))
+	}
+	
+	if p.config.ImageCreateConfig == nil {
+		errs = packer.MultiErrorAppend(errs, fmt.Errorf("%s must be set", "image"))
+	}
+	
 	if errs != nil && len(errs.Errors) > 0 {
 		return errs
 	}
 
 	p.authOptions = gophercloud.AuthOptions {
-		IdentityEndpoint: p.config.IdentityEndpoint,
-		Username: p.config.Username,
-		Password: p.config.Password,
-		TenantID: p.config.TenantId,
+		IdentityEndpoint: *p.config.IdentityEndpoint,
+		Username: *p.config.Username,
+		Password: *p.config.Password,
+		TenantID: *p.config.TenantId,
 	}
+
+	p.imageCreateOpts = toImageServiceCreateOpts(*p.config.ImageCreateConfig)
 
 	// We don't instantiate a ProviderClient here because doing so
 	// has side-effects: making requests to the OpenStack
 	// instance. Configure should be pure.
 
 	return nil
-}
-
-/// If there exists an `s` for which `m[s] == ""`, returns an error
-/// reporting all such `s`.  Otherwise, returns `nil`.
-func checkAllStringsNotEmpty(m map[string]*string) *packer.MultiError {
-	var errs *packer.MultiError
-	for key, ptr := range m {
-		if *ptr == "" {
-			errs = packer.MultiErrorAppend(
-				errs,
-				fmt.Errorf("%s must be set", key))
-		}
-	}
-	return errs
 }
 
 // PostProcess takes a previously created Artifact and produces another
@@ -100,7 +130,7 @@ func (p *OpenStackPostProcessor) PostProcess(ui packer.Ui, artifact packer.Artif
 	
 	serviceClient := openstack.NewIdentityV3(providerClient)
 
-	createResult := imageservice.Create(serviceClient, p.config.ImageCreateOpts)
+	createResult := imageservice.Create(serviceClient, p.imageCreateOpts)
 
 	_, createErr := createResult.Extract()
 	if createErr != nil {

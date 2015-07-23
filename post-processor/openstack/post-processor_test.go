@@ -21,6 +21,9 @@ func TestPostProcessor_Configure_Good(t *testing.T) {
 		"password":          "adminpass",
 		"tenant_id":         "example_tenant",
 		"irrelevant_key":    "should just be ignored",
+		"image": map[string]string{
+			"Name": "newimage",
+		},
 	})
 
 	if err != nil {
